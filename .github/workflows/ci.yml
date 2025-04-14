@@ -1,0 +1,46 @@
+name: CI Pipeline  # 定義此 GitHub Actions 工作流程的名稱為 CI Pipeline
+
+on: [push, pull_request]  # 觸發條件：當有 push 或 pull request 時，自動啟動此工作流程
+
+jobs:
+  
+  test:
+    timeout-minutes: 60 # 為整個作業設置超時時間，避免資源長期占用，設置為60分鐘。
+    runs-on: ${{ matrix.os }}  # 根據矩陣選擇運行的操作系統
+    strategy:
+      matrix:
+        os: [ubuntu-latest]  # 測試 Windows 和 Ubuntu
+        
+        node-version: [20.x]  # 使用 20.x 版 Node.js (LTS)
+    steps:
+      - name: Checkout code  # 檢出當前分支的代碼到虛擬機器中
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}  # 設置 Node.js 環境
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json  # 使用 package-lock.json 作為依賴版本緩存依據
+
+      - name: Install dependencies  # 安裝項目依賴
+        run: npm ci  # 使用 npm ci 安裝依賴，既快又保證環境一致
+
+      - name: Install Playwright Browsers # 安裝 Playwright 瀏覽器依賴和必要組件。
+        run: npx playwright install --with-deps # `--with-deps` 標誌會安裝所需的系統依賴。
+
+      - name: Run Playwright tests  # 運行 Playwright 測試
+        run: npx playwright test
+
+      - name: Run CI tests  # 運行專門為 CI/CD 設計的測試
+        run: npm run test:ci
+
+      - name: Audit dependencies  # 檢查依賴項中的安全性漏洞
+        run: npm audit --production  # 這裡假設 package-lock.json 在 test 階段已存在
+      
+      - uses: actions/upload-artifact@v4 # 上傳測試結果或報告為工件。
+        if: ${{ !cancelled() }} # 僅當工作流未被取消時上傳。
+        with:
+          name: playwright-report # 指定上傳的工件名稱。
+          path: playwright-report/ # 定義工件的目錄路徑。
+          retention-days: 30 # 保留工件 30 天。
